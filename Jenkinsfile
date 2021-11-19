@@ -1,4 +1,4 @@
-def podtemplate='''
+def podtemplate = '''
 apiVersion: v1
 kind: Pod
 metadata:
@@ -13,47 +13,29 @@ spec:
     - sleep
     - "100000"
 '''
-
- 
-if(env.BRANCH_NAME ==~ "dev-.*"){
-    environment="dev"
-    region="us-east-1"
-}
-else if(env.BRANCH_NAME ==~ "qa-.*"){
-    environment="qa"
-    region="us-east-2"
-}
-else{
-    environment="prod"
-    region="us-west-2"
-}
-
+properties([
+  parameters([
+    choice(choices: ['dev', 'qa','stage', 'prod'], description: 'Choose an ENV from the list', name: 'environment'),
+    booleanParam(defaultValue: true, description: 'Do you want to apply?', name: 'command')
+  ])
+])
 
 podTemplate(label: 'k8-tools', name: 'k8-tools', namespace: 'tools', yaml: podtemplate, showRawYaml: false) {
   node("k8-tools"){
     container("k8-tools"){
-        stage("Pull"){
-          checkout scm
-        }
 
-        withCredentials([usernamePassword(credentialsId: 'dockerhub', passwordVariable: 'REGISTRY_PASSWORD', usernameVariable: 'REGISTRY_USERNAME')]) {
-          stage("Build"){
-            sh 'docker build -t $REGISTRY_USERNAME/flaskex .'
-          }
-
-          stage("Push Image"){
-            sh '''
-              docker login -u $REGISTRY_USERNAME -p $REGISTRY_PASSWORD
-              docker push $REGISTRY_USERNAME/flaskex:$
-            '''
-          }
-        }    
-
+      
+      stage("Pull"){
+        git 'https://github.com/rahymov/flask-chart.git'
+      }
+      withCredentials([usernamePassword(credentialsId: 'dockerhub', passwordVariable: 'REGISTRY_PASSWORD', usernameVariable: 'REGISTRY_USERNAME')]) {
         stage("deploy"){
           sh '''
-            
+            helm upgrade --install my --set image.repository=$REGISTRY_USERNAME/flaskex:$environment .  -n default
           '''
         }
+      }
     }
   }
 }
+
